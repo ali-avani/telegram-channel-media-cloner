@@ -85,7 +85,7 @@ async def main():
                         send_file_args.update({"progress_callback": t.update_to})
                         await client.send_file(**send_file_args)
                     try:
-                        for filename in glob.glob(filepath_prefix):
+                        for filename in glob.glob(filepath_prefix + "*"):
                             os.remove(filename)
                     except OSError:
                         pass
