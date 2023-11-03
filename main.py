@@ -52,7 +52,7 @@ class MediaDB:
         self.saved_medias = self._saved_medias
 
 
-class DownloadProgressBar(tqdm):
+class ProgressBar(tqdm):
     def update_to(self, current, total):
         self.total = total
         self.update(current - self.n)
@@ -79,22 +79,25 @@ async def main():
                 filepath_prefix = f"{MEDIA_PATH}/{filename}"
                 is_video = not bool(message.photo)
                 if not filename in media_db.saved_medias:
-                    with DownloadProgressBar(unit="B", unit_scale=True) as t:
+                    with ProgressBar(unit="B", unit_scale=True) as t:
                         file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
                     thumb_path = None
                     if is_video:
                         thumb_path = await client.download_media(message, filepath_prefix, thumb=-1)
-                        send_file_args.update({"thumb": thumb_path, "supports_streaming": True})
                     files.append((file_path, thumb_path))
                     filenames.append(filename)
             print("Uploading:")
+            if len(files) == 1:
+                files, thumbs = files[0]
+            else:
+                files, thumbs = zip(*files)
             send_file_args = {
                 "entity": channel,
-                "file": [f for f, _ in files],
-                "thumb": [t for _, t in files],
+                "file": files,
+                "thumb": thumbs,
                 "supports_streaming": True,
             }
-            with DownloadProgressBar(unit="B", unit_scale=True) as t:
+            with ProgressBar(unit="B", unit_scale=True) as t:
                 send_file_args.update({"progress_callback": t.update_to})
                 await client.send_file(**send_file_args)
             try:
