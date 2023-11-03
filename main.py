@@ -74,6 +74,7 @@ async def main():
             files = []
             filenames = []
             for message in group:
+                message = client.get_messages(SOURCE_CHAT_ID, ids=message.id)
                 file = message.document or message.photo
                 filename = file.id
                 filepath_prefix = f"{MEDIA_PATH}/{filename}"
