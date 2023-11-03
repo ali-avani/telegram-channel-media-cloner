@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from telethon import TelegramClient
 from tqdm import tqdm
 
+load_dotenv()
+
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
 SOURCE_CHAT_ID = os.environ.get("SOURCE_CHAT_ID")
