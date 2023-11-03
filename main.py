@@ -2,6 +2,7 @@ import asyncio
 import glob
 import os
 import pickle
+from itertools import groupby
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -61,37 +62,51 @@ async def main():
     media_db = MediaDB(MEDIA_SAVE_FILE_NAME)
     await client.start()
     channel = await client.get_entity(DESTINATION_CHANNEL_ID)
-    async for message in client.iter_messages(SOURCE_CHAT_ID):
+    messages = []
+    async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
         file = message.document or message.photo
         if file:
-            filename = file.id
-            filepath_prefix = f"{MEDIA_PATH}/{filename}"
-            is_video = not bool(message.photo)
-            if not filename in media_db.saved_medias:
-                try:
-                    print("Downloading:", filename)
+            if not file.id in media_db.saved_medias:
+                messages.append(message)
+    for key, group in groupby(messages, lambda x: x.grouped_id or x.id):
+        try:
+            print("Downloading:", key)
+            files = []
+            filenames = []
+            for message in group:
+                file = message.document or message.photo
+                filename = file.id
+                filepath_prefix = f"{MEDIA_PATH}/{filename}"
+                is_video = not bool(message.photo)
+                if not filename in media_db.saved_medias:
                     with DownloadProgressBar(unit="B", unit_scale=True) as t:
                         file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
                     thumb_path = None
-                    print("Uploading:")
-                    send_file_args = {
-                        "entity": channel,
-                        "file": file_path,
-                    }
                     if is_video:
                         thumb_path = await client.download_media(message, filepath_prefix, thumb=-1)
                         send_file_args.update({"thumb": thumb_path, "supports_streaming": True})
-                    with DownloadProgressBar(unit="B", unit_scale=True) as t:
-                        send_file_args.update({"progress_callback": t.update_to})
-                        await client.send_file(**send_file_args)
-                    try:
-                        for filename in glob.glob(filepath_prefix + "*"):
-                            os.remove(filename)
-                    except OSError:
-                        pass
-                finally:
-                    print("Done")
-                    media_db.add_media(filename)
+                    files.append((file_path, thumb_path))
+                    filenames.append(filename)
+            print("Uploading:")
+            send_file_args = {
+                "entity": channel,
+                "file": [f for f, _ in files],
+                "thumb": [t for _, t in files],
+                "supports_streaming": True,
+            }
+            with DownloadProgressBar(unit="B", unit_scale=True) as t:
+                send_file_args.update({"progress_callback": t.update_to})
+                await client.send_file(**send_file_args)
+            try:
+                for filename in filenames:
+                    for f in glob.glob(f"{MEDIA_PATH}/{filename}" + "*"):
+                        os.remove(f)
+            except OSError:
+                pass
+        finally:
+            print("Done")
+            for filename in filenames:
+                media_db.add_media(filename)
 
 
 if __name__ == "__main__":
