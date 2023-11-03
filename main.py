@@ -74,11 +74,16 @@ async def main():
                         file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
                     thumb_path = None
                     print("Uploading:")
+                    send_file_args = {
+                        "entity": channel,
+                        "file": file_path,
+                    }
                     if is_video:
                         thumb_path = await client.download_media(message, filepath_prefix, thumb=-1)
-                        await client.send_file(channel, file_path, supports_streaming=True, thumb=thumb_path)
-                    else:
-                        await client.send_file(channel, file_path)
+                        send_file_args.update({"thumb": thumb_path, "supports_streaming": True})
+                    with DownloadProgressBar(unit="B", unit_scale=True) as t:
+                        send_file_args.update({"progress_callback": t.update_to})
+                        await client.send_file(**send_file_args)
                     try:
                         for filename in glob.glob(filepath_prefix):
                             os.remove(filename)
