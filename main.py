@@ -4,20 +4,20 @@ import os
 import pickle
 from pathlib import Path
 
+from dotenv import load_dotenv
 from telethon import TelegramClient
 from tqdm import tqdm
 
+API_ID = os.environ.get("API_ID")
+API_HASH = os.environ.get("API_HASH")
+SOURCE_CHAT_ID = os.environ.get("SOURCE_CHAT_ID")
+DESTINATION_CHANNEL_ID = os.environ.get("DESTINATION_CHANNEL_ID")
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 MEDIA_PATH = f"{BASE_DIR}/medias"
 MEDIA_SAVE_FILE_NAME = "saved_medias"
 
 loop = asyncio.get_event_loop()
-api_id = 25154813
-api_hash = "78a005a87758a84611961479eed2a02d"
-cid = -1001962622452
-ucid = -1002037816346
-
-client = TelegramClient("test_session123123123", api_id, api_hash)
+client = TelegramClient("tcmc_session", API_ID, API_HASH)
 
 Path(MEDIA_PATH).mkdir(parents=True, exist_ok=True)
 
@@ -58,8 +58,8 @@ class DownloadProgressBar(tqdm):
 async def main():
     media_db = MediaDB(MEDIA_SAVE_FILE_NAME)
     await client.start()
-    channel = await client.get_entity(ucid)
-    async for message in client.iter_messages(cid):
+    channel = await client.get_entity(DESTINATION_CHANNEL_ID)
+    async for message in client.iter_messages(SOURCE_CHAT_ID):
         file = message.document or message.photo
         if file:
             filename = file.id
@@ -87,4 +87,5 @@ async def main():
                     media_db.add_media(filename)
 
 
-loop.run_until_complete(main())
+if __name__ == "__main__":
+    loop.run_until_complete(main())
