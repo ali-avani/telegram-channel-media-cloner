@@ -12,8 +12,8 @@ load_dotenv()
 
 API_ID = os.environ.get("API_ID")
 API_HASH = os.environ.get("API_HASH")
-SOURCE_CHAT_ID = os.environ.get("SOURCE_CHAT_ID")
-DESTINATION_CHANNEL_ID = os.environ.get("DESTINATION_CHANNEL_ID")
+SOURCE_CHAT_ID = int(os.environ.get("SOURCE_CHAT_ID"))
+DESTINATION_CHANNEL_ID = int(os.environ.get("DESTINATION_CHANNEL_ID"))
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 MEDIA_PATH = f"{BASE_DIR}/medias"
 MEDIA_SAVE_FILE_NAME = "saved_medias"
