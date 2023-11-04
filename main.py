@@ -99,8 +99,10 @@ async def main():
             print("Uploading:")
             if len(files) == 1:
                 files, thumbs = files[0]
-            else:
+            elif len(files) > 1:
                 files, thumbs = zip(*files)
+            else:
+                continue
             send_file_args = {
                 "entity": channel,
                 "file": files,
@@ -110,14 +112,14 @@ async def main():
             with ProgressBar(unit="B", unit_scale=True) as t:
                 send_file_args.update({"progress_callback": t.update_to})
                 await client.send_file(**send_file_args)
+        finally:
+            print("Done")
             try:
                 for filename in filenames:
                     for f in glob.glob(f"{MEDIA_PATH}/{filename}" + "*"):
                         os.remove(f)
             except OSError:
                 pass
-        finally:
-            print("Done")
             for filename in filenames:
                 media_db.add_media(filename)
 
