@@ -105,8 +105,9 @@ class FileProgressBar:
     message = None
     title = None
 
-    def __init__(self, message):
+    def __init__(self, message, title):
         self.message = message
+        self.title = title
 
     def get_message(self):
         return f"Message: {get_message_link(self.message)}"
@@ -119,14 +120,6 @@ class FileProgressBar:
 
     def progress_fn(self, progress_bar):
         return f"{self.get_message()}\n{self.download_progress(progress_bar)}"
-
-
-class DownloadProgressBar(FileProgressBar):
-    title = "download"
-
-
-class UploadProgressBar(FileProgressBar):
-    title = "upload"
 
 
 def display_upload_info(files):
@@ -178,7 +171,7 @@ async def main():
                 if not filename in media_db.saved_medias:
                     thumb_path = None
                     attributes = None
-                    dpbr = DownloadProgressBar(message)
+                    dpbr = FileProgressBar(message, "download")
                     with ProgressBar(
                         unit="B",
                         unit_scale=True,
@@ -207,7 +200,7 @@ async def main():
                 "supports_streaming": True,
                 "attributes": attributes,
             }
-            upbr = UploadProgressBar(message)
+            upbr = FileProgressBar(message, "upload")
             with ProgressBar(
                 unit="B",
                 unit_scale=True,
