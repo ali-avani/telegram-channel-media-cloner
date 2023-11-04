@@ -212,12 +212,11 @@ async def main():
             for filename in filenames:
                 media_db.add_media(filename)
         finally:
-            print("Cleaning up:")
+            print("Cleaning up")
             for filename in filenames:
                 for f in glob.glob(f"{MEDIA_PATH}/{filename}" + "*"):
                     with suppress(OSError):
                         os.remove(f)
-
             print("Done")
             print()
 
