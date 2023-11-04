@@ -103,6 +103,7 @@ class ProgressBar(tqdm):
 
 class FileProgressBar:
     message = None
+    title = None
 
     def __init__(self, message):
         self.message = message
@@ -110,27 +111,22 @@ class FileProgressBar:
     def get_message(self):
         return f"Message: {get_message_link(self.message)}"
 
+    def progress(self, progress_bar):
+        return f"{self.title.capitalize()}ing: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
 
-class DownloadProgressBar(FileProgressBar):
-    def download_progress(self, progress_bar):
-        return f"Downloading: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
+    def start_fn(self, _):
+        return f"Starting {self.title}:\n{self.get_message()}"
 
-    def download_start_fn(self, progress_bar):
-        return f"Starting:\n{self.get_message()}"
-
-    def download_progress_fn(self, progress_bar):
+    def progress_fn(self, progress_bar):
         return f"{self.get_message()}\n{self.download_progress(progress_bar)}"
 
 
+class DownloadProgressBar(FileProgressBar):
+    title = "download"
+
+
 class UploadProgressBar(FileProgressBar):
-    def upload_progress(self, progress_bar):
-        return f"Uploading: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
-
-    def upload_start_fn(self, progress_bar):
-        return f"Starting:\n{self.get_message()}"
-
-    def upload_progress_fn(self, progress_bar):
-        return f"{self.get_message()}\n{self.upload_progress(progress_bar)}"
+    title = "upload"
 
 
 def display_upload_info(files):
@@ -186,8 +182,8 @@ async def main():
                     with ProgressBar(
                         unit="B",
                         unit_scale=True,
-                        start_fn=dpbr.download_start_fn,
-                        progress_fn=dpbr.download_progress_fn,
+                        start_fn=dpbr.start_fn,
+                        progress_fn=dpbr.progress_fn,
                     ) as t:
                         file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
                     if is_video:
@@ -215,8 +211,8 @@ async def main():
             with ProgressBar(
                 unit="B",
                 unit_scale=True,
-                start_fn=upbr.upload_start_fn,
-                progress_fn=upbr.upload_progress_fn,
+                start_fn=upbr.start_fn,
+                progress_fn=upbr.progress_fn,
             ) as t:
                 send_file_args.update({"progress_callback": t.update_to})
                 await client.send_file(**send_file_args)
