@@ -23,6 +23,7 @@ MEDIA_SAVE_FILE_NAME = "saved_medias"
 
 show_chats = False
 clean_channel = False
+source_chat = None
 
 loop = asyncio.get_event_loop()
 client = TelegramClient("tcmc_session", API_ID, API_HASH)
@@ -97,15 +98,17 @@ class ProgressBar(tqdm):
                 await self.message.delete()
 
 
-class DownloadProgressBar:
+class FileProgressBar:
     message = None
 
     def __init__(self, message):
         self.message = message
 
     def get_message(self):
-        return f"Message: {self.message.id}"
+        return f"Message: {get_message_link(self.message)}"
 
+
+class DownloadProgressBar(FileProgressBar):
     def download_progress(self, progress_bar):
         return f"Downloading: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
 
@@ -116,15 +119,7 @@ class DownloadProgressBar:
         return f"{self.get_message()}\n{self.download_progress(progress_bar)}"
 
 
-class UploadProgressBar:
-    message = None
-
-    def __init__(self, message):
-        self.message = message
-
-    def get_message(self):
-        return f"Message: {self.message.id}"
-
+class UploadProgressBar(FileProgressBar):
     def upload_progress(self, progress_bar):
         return f"Uploading: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
 
@@ -139,7 +134,12 @@ def display_upload_info(files):
     print(", ".join([file.split("/")[-1] for file in files]))
 
 
+def get_message_link(message):
+    return f"https://t.me/c/{source_chat.id}/{message.id}"
+
+
 async def main():
+    global source_chat
     media_db = MediaDB(MEDIA_SAVE_FILE_NAME)
     await client.start()
 
@@ -156,7 +156,8 @@ async def main():
         media_db.clean_media()
         return
 
-    channel = await client.get_entity(DESTINATION_CHANNEL_ID)
+    source_chat = await client.get_entity(SOURCE_CHAT_ID)
+    destination_channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
     async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
         file = message.document or message.photo
@@ -201,7 +202,7 @@ async def main():
             else:
                 continue
             send_file_args = {
-                "entity": channel,
+                "entity": destination_channel,
                 "file": files,
                 "thumb": thumbs,
                 "supports_streaming": True,
