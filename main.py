@@ -3,10 +3,10 @@ import asyncio
 import glob
 import os
 import pickle
+import time
 from itertools import groupby
 from pathlib import Path
 
-import cv2 as cv
 from dotenv import load_dotenv
 from telethon import TelegramClient
 from tqdm import tqdm
@@ -28,6 +28,18 @@ loop = asyncio.get_event_loop()
 client = TelegramClient("tcmc_session", API_ID, API_HASH)
 
 Path(MEDIA_PATH).mkdir(parents=True, exist_ok=True)
+
+
+class Timer:
+    def __init__(self, time_between=1):
+        self.start_time = time.time()
+        self.time_between = time_between
+
+    def can_send(self):
+        if time.time() > (self.start_time + self.time_between):
+            self.start_time = time.time()
+            return True
+        return False
 
 
 class MediaDB:
@@ -61,9 +73,66 @@ class MediaDB:
 
 
 class ProgressBar(tqdm):
-    def update_to(self, current, total):
+    timer = None
+    message = None
+    start_fn = None
+    progress_fn = None
+
+    def __init__(self, *args, **kwargs):
+        self.start_fn = kwargs.pop("start_fn", None)
+        self.progress_fn = kwargs.pop("progress_fn", None)
+        super().__init__(*args, **kwargs)
+        self.timer = Timer()
+
+    async def update_to(self, current, total):
         self.total = total
         self.update(current - self.n)
+        if self.start_fn and self.progress_fn:
+            if not self.message:
+                self.message = await client.send_message(DESTINATION_CHANNEL_ID, self.start_fn(self))
+            else:
+                if self.timer.can_send():
+                    await self.message.edit(self.progress_fn and self.progress_fn(self))
+            if current == total:
+                await self.message.delete()
+
+
+class DownloadProgressBar:
+    message = None
+
+    def __init__(self, message):
+        self.message = message
+
+    def get_message(self):
+        return f"Message: {self.message.id}"
+
+    def download_progress(self, progress_bar):
+        return f"Downloading: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
+
+    def download_start_fn(self, progress_bar):
+        return f"Starting:\n{self.get_message()}"
+
+    def download_progress_fn(self, progress_bar):
+        return f"{self.get_message()}\n{self.download_progress(progress_bar)}"
+
+
+class UploadProgressBar:
+    message = None
+
+    def __init__(self, message):
+        self.message = message
+
+    def get_message(self):
+        return f"Message: {self.message.id}"
+
+    def upload_progress(self, progress_bar):
+        return f"Uploading: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
+
+    def upload_start_fn(self, progress_bar):
+        return f"Starting:\n{self.get_message()}"
+
+    def upload_progress_fn(self, progress_bar):
+        return f"{self.get_message()}\n{self.upload_progress(progress_bar)}"
 
 
 def display_upload_info(files):
@@ -109,7 +178,13 @@ async def main():
                 if not filename in media_db.saved_medias:
                     thumb_path = None
                     attributes = None
-                    with ProgressBar(unit="B", unit_scale=True) as t:
+                    dpbr = DownloadProgressBar(message)
+                    with ProgressBar(
+                        unit="B",
+                        unit_scale=True,
+                        start_fn=dpbr.download_start_fn,
+                        progress_fn=dpbr.download_progress_fn,
+                    ) as t:
                         file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
                     if is_video:
                         thumb_path = await client.download_media(message, filepath_prefix, thumb=-1)
@@ -132,7 +207,13 @@ async def main():
                 "supports_streaming": True,
                 "attributes": attributes,
             }
-            with ProgressBar(unit="B", unit_scale=True) as t:
+            upbr = UploadProgressBar(message)
+            with ProgressBar(
+                unit="B",
+                unit_scale=True,
+                start_fn=upbr.upload_start_fn,
+                progress_fn=upbr.upload_progress_fn,
+            ) as t:
                 send_file_args.update({"progress_callback": t.update_to})
                 await client.send_file(**send_file_args)
         finally:
