@@ -99,12 +99,13 @@ async def main():
             print("Uploading:")
             if len(files) == 1:
                 files, thumbs = files[0]
+                print(f"{files} -> {thumbs or ''}")
             elif len(files) > 1:
                 files, thumbs = zip(*files)
+                for file, thumb in zip(files, thumbs):
+                    print(f"{file} -> {thumb or ''}")
             else:
                 continue
-            for file, thumb in zip(files, thumbs):
-                print(f"{file} -> {thumb or ''}")
             send_file_args = {
                 "entity": channel,
                 "file": files,
