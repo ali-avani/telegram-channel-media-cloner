@@ -56,6 +56,9 @@ class MediaDB:
         self._saved_medias.add(media)
         self.saved_medias = self._saved_medias
 
+    def clean_media(self, _):
+        self.saved_medias = set()
+
 
 class ProgressBar(tqdm):
     def update_to(self, current, total):
@@ -81,6 +84,7 @@ async def main():
             entity=DESTINATION_CHANNEL_ID,
             message_ids=[message.id async for message in client.iter_messages(DESTINATION_CHANNEL_ID, reverse=True)],
         )
+        media_db.clean_media()
         return
 
     channel = await client.get_entity(DESTINATION_CHANNEL_ID)
@@ -132,7 +136,7 @@ async def main():
                 send_file_args.update({"progress_callback": t.update_to})
                 await client.send_file(**send_file_args)
         finally:
-            print("Done")
+            print("Cleaning up:")
             try:
                 for filename in filenames:
                     for f in glob.glob(f"{MEDIA_PATH}/{filename}" + "*"):
@@ -141,6 +145,9 @@ async def main():
                 pass
             for filename in filenames:
                 media_db.add_media(filename)
+
+            print("Done")
+            print()
 
 
 def init_argparse() -> argparse.ArgumentParser:
