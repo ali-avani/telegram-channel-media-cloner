@@ -56,7 +56,7 @@ class MediaDB:
         self._saved_medias.add(media)
         self.saved_medias = self._saved_medias
 
-    def clean_media(self, _):
+    def clean_media(self):
         self.saved_medias = set()
 
 
