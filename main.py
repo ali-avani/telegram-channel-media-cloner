@@ -78,6 +78,7 @@ class ProgressBar(tqdm):
     message = None
     start_fn = None
     progress_fn = None
+    last_text = None
 
     def __init__(self, *args, **kwargs):
         self.start_fn = kwargs.pop("start_fn", None)
@@ -92,8 +93,10 @@ class ProgressBar(tqdm):
             if not self.message:
                 self.message = await client.send_message(DESTINATION_CHANNEL_ID, self.start_fn(self))
             else:
-                if self.timer.can_send():
-                    await self.message.edit(self.progress_fn and self.progress_fn(self))
+                new_text = self.progress_fn(self)
+                if self.timer.can_send() and new_text != self.last_text:
+                    await self.message.edit(self.progress_fn(self))
+                    self.last_text = new_text
             if current == total:
                 await self.message.delete()
 
