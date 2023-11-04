@@ -103,6 +103,8 @@ async def main():
                 files, thumbs = zip(*files)
             else:
                 continue
+            for file, thumb in zip(files, thumbs):
+                print(f"{file} -> {thumb or ''}")
             send_file_args = {
                 "entity": channel,
                 "file": files,
