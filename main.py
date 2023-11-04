@@ -86,13 +86,11 @@ async def main():
     channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
     async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
-        if not message.id == 114:
-            continue
         file = message.document or message.photo
-
         if file:
             if not file.id in media_db.saved_medias:
                 messages.append(message)
+
     for key, group in groupby(messages, lambda x: x.grouped_id or x.id):
         try:
             print("Downloading:", key)
