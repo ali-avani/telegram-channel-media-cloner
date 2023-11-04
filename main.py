@@ -4,11 +4,13 @@ import glob
 import os
 import pickle
 import time
+from contextlib import suppress
 from itertools import groupby
 from pathlib import Path
 
 from dotenv import load_dotenv
 from telethon import TelegramClient
+from telethon.errors.rpcerrorlist import FloodWaitError, MessageNotModifiedError
 from tqdm import tqdm
 
 load_dotenv()
@@ -32,7 +34,7 @@ Path(MEDIA_PATH).mkdir(parents=True, exist_ok=True)
 
 
 class Timer:
-    def __init__(self, time_between=1):
+    def __init__(self, time_between=2):
         self.start_time = time.time()
         self.time_between = time_between
 
@@ -78,7 +80,6 @@ class ProgressBar(tqdm):
     message = None
     start_fn = None
     progress_fn = None
-    last_text = None
 
     def __init__(self, *args, **kwargs):
         self.start_fn = kwargs.pop("start_fn", None)
@@ -93,10 +94,9 @@ class ProgressBar(tqdm):
             if not self.message:
                 self.message = await client.send_message(DESTINATION_CHANNEL_ID, self.start_fn(self))
             else:
-                new_text = self.progress_fn(self)
-                if self.timer.can_send() and new_text != self.last_text:
-                    await self.message.edit(self.progress_fn(self))
-                    self.last_text = new_text
+                with suppress(FloodWaitError, MessageNotModifiedError):
+                    if self.timer.can_send():
+                        await self.message.edit(self.progress_fn(self))
             if current == total:
                 await self.message.delete()
 
@@ -224,12 +224,10 @@ async def main():
                 media_db.add_media(filename)
         finally:
             print("Cleaning up:")
-            try:
-                for filename in filenames:
-                    for f in glob.glob(f"{MEDIA_PATH}/{filename}" + "*"):
+            for filename in filenames:
+                for f in glob.glob(f"{MEDIA_PATH}/{filename}" + "*"):
+                    with suppress(OSError):
                         os.remove(f)
-            except OSError:
-                pass
 
             print("Done")
             print()
