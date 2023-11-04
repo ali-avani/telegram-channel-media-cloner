@@ -220,6 +220,8 @@ async def main():
             ) as t:
                 send_file_args.update({"progress_callback": t.update_to})
                 await client.send_file(**send_file_args)
+            for filename in filenames:
+                media_db.add_media(filename)
         finally:
             print("Cleaning up:")
             try:
@@ -228,8 +230,6 @@ async def main():
                         os.remove(f)
             except OSError:
                 pass
-            for filename in filenames:
-                media_db.add_media(filename)
 
             print("Done")
             print()
