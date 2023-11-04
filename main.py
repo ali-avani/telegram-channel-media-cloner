@@ -6,6 +6,7 @@ import pickle
 from itertools import groupby
 from pathlib import Path
 
+import cv2 as cv
 from dotenv import load_dotenv
 from telethon import TelegramClient
 from tqdm import tqdm
@@ -21,6 +22,7 @@ MEDIA_PATH = f"{BASE_DIR}/medias"
 MEDIA_SAVE_FILE_NAME = "saved_medias"
 
 show_chats = False
+clean_channel = False
 
 loop = asyncio.get_event_loop()
 client = TelegramClient("tcmc_session", API_ID, API_HASH)
@@ -61,6 +63,10 @@ class ProgressBar(tqdm):
         self.update(current - self.n)
 
 
+def display_upload_info(files):
+    print(", ".join([file.split("/")[-1] for file in files]))
+
+
 async def main():
     media_db = MediaDB(MEDIA_SAVE_FILE_NAME)
     await client.start()
@@ -70,10 +76,20 @@ async def main():
             print(f"{dialog.name}: {dialog.id}")
         return
 
+    if clean_channel:
+        await client.delete_messages(
+            entity=DESTINATION_CHANNEL_ID,
+            message_ids=[message.id async for message in client.iter_messages(DESTINATION_CHANNEL_ID, reverse=True)],
+        )
+        return
+
     channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
     async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
+        if not message.id == 114:
+            continue
         file = message.document or message.photo
+
         if file:
             if not file.id in media_db.saved_medias:
                 messages.append(message)
@@ -89,21 +105,22 @@ async def main():
                 filepath_prefix = f"{MEDIA_PATH}/{filename}"
                 is_video = not bool(message.photo)
                 if not filename in media_db.saved_medias:
+                    thumb_path = None
+                    attributes = None
                     with ProgressBar(unit="B", unit_scale=True) as t:
                         file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
-                    thumb_path = None
                     if is_video:
                         thumb_path = await client.download_media(message, filepath_prefix, thumb=-1)
-                    files.append((file_path, thumb_path))
+                        attributes = file.attributes
+                    files.append((file_path, thumb_path, attributes))
                     filenames.append(filename)
             print("Uploading:")
             if len(files) == 1:
-                files, thumbs = files[0]
-                print(f"{files} -> {thumbs or ''}")
+                files, thumbs, attributes = files[0]
+                display_upload_info([files])
             elif len(files) > 1:
-                files, thumbs = zip(*files)
-                for file, thumb in zip(files, thumbs):
-                    print(f"{file} -> {thumb or ''}")
+                files, thumbs, attributes = zip(*files)
+                display_upload_info(files)
             else:
                 continue
             send_file_args = {
@@ -111,6 +128,7 @@ async def main():
                 "file": files,
                 "thumb": thumbs,
                 "supports_streaming": True,
+                "attributes": attributes,
             }
             with ProgressBar(unit="B", unit_scale=True) as t:
                 send_file_args.update({"progress_callback": t.update_to})
@@ -130,6 +148,7 @@ async def main():
 def init_argparse() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", action="store_true")
+    parser.add_argument("-c", action="store_true")
     return parser
 
 
@@ -139,4 +158,7 @@ if __name__ == "__main__":
 
     if args.s:
         show_chats = True
+    if args.c:
+        clean_channel = True
+
     loop.run_until_complete(main())
