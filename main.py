@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import glob
 import os
@@ -18,6 +19,8 @@ DESTINATION_CHANNEL_ID = int(os.environ.get("DESTINATION_CHANNEL_ID"))
 BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 MEDIA_PATH = f"{BASE_DIR}/medias"
 MEDIA_SAVE_FILE_NAME = "saved_medias"
+
+show_chats = False
 
 loop = asyncio.get_event_loop()
 client = TelegramClient("tcmc_session", API_ID, API_HASH)
@@ -61,6 +64,12 @@ class ProgressBar(tqdm):
 async def main():
     media_db = MediaDB(MEDIA_SAVE_FILE_NAME)
     await client.start()
+
+    if show_chats:
+        async for dialog in client.iter_dialogs():
+            print(f"{dialog.name}: {dialog.id}")
+        return
+
     channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
     async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
@@ -113,5 +122,16 @@ async def main():
                 media_db.add_media(filename)
 
 
+def init_argparse() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", action="store_true")
+    return parser
+
+
 if __name__ == "__main__":
+    parser = init_argparse()
+    args = parser.parse_args()
+
+    if args.s:
+        show_chats = True
     loop.run_until_complete(main())
