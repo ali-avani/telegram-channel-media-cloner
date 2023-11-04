@@ -119,7 +119,7 @@ class FileProgressBar:
         return f"Starting {self.title}:\n{self.get_message()}"
 
     def progress_fn(self, progress_bar):
-        return f"{self.get_message()}\n{self.download_progress(progress_bar)}"
+        return f"{self.get_message()}\n{self.progress(progress_bar)}"
 
 
 def display_upload_info(files):
