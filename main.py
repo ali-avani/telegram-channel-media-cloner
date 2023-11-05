@@ -183,22 +183,21 @@ async def main():
                 filename = file.id
                 filepath_prefix = f"{MEDIA_PATH}/{filename}"
                 is_video = not bool(message.photo)
-                if not filename in media_db.saved_medias:
-                    thumb_path = None
-                    attributes = None
-                    dpbr = FileProgressBar(message, "download")
-                    with ProgressBar(
-                        unit="B",
-                        unit_scale=True,
-                        start_fn=dpbr.start_fn,
-                        progress_fn=dpbr.progress_fn,
-                    ) as t:
-                        file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
-                    if is_video:
-                        thumb_path = await client.download_media(message, filepath_prefix, thumb=-1)
-                        attributes = file.attributes
-                    files.append((file_path, thumb_path, attributes))
-                    filenames.append(filename)
+                thumb_path = None
+                attributes = None
+                dpbr = FileProgressBar(message, "download")
+                with ProgressBar(
+                    unit="B",
+                    unit_scale=True,
+                    start_fn=dpbr.start_fn,
+                    progress_fn=dpbr.progress_fn,
+                ) as t:
+                    file_path = await client.download_media(message, filepath_prefix, progress_callback=t.update_to)
+                if is_video:
+                    thumb_path = await client.download_media(message, filepath_prefix, thumb=-1)
+                    attributes = file.attributes
+                files.append((file_path, thumb_path, attributes))
+                filenames.append(filename)
             print("Uploading:")
             if len(files) == 1:
                 files, thumbs, attributes = files[0]
