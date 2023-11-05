@@ -177,7 +177,7 @@ async def main():
 
     if dry_run:
         for message in messages:
-            print(message.id, get_message_link(message))
+            print(f"{message.id}: {get_message_link(message)}")
         return
 
     for key, group in groupby(messages, lambda x: x.grouped_id or x.id):
