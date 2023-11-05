@@ -34,6 +34,7 @@ clean_channel = False
 start_id = None
 end_id = None
 ignore_database = False
+dry_run = False
 
 Path(MEDIA_PATH).mkdir(parents=True, exist_ok=True)
 
@@ -174,6 +175,11 @@ async def main():
             continue
         messages.append(message)
 
+    if dry_run:
+        for message in messages:
+            print(message.id, get_message_link(message))
+        return
+
     for key, group in groupby(messages, lambda x: x.grouped_id or x.id):
         try:
             print("Downloading:", key)
@@ -244,6 +250,7 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("-i", "--start-id", type=check_positive, help="Start from message id")
     parser.add_argument("-e", "--end-id", type=check_positive, help="End at message id")
     parser.add_argument("-d", "--ignore-database", action="store_true", help="Ignore media database")
+    parser.add_argument("--dry-run", action="store_true", help="Dry run and only show messages")
     return parser
 
 
