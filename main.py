@@ -166,9 +166,9 @@ async def main():
         if start_id and message.id < start_id:
             continue
         file = message.document or message.photo
-        if file:
-            if not file.id in media_db.saved_medias and not ignore_database:
-                messages.append(message)
+        if not file or file.id in media_db.saved_medias or ignore_database:
+            continue
+        messages.append(message)
 
     for key, group in groupby(messages, lambda x: x.grouped_id or x.id):
         try:
