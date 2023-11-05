@@ -23,12 +23,16 @@ BASE_DIR = os.path.dirname(os.path.realpath(__file__))
 MEDIA_PATH = f"{BASE_DIR}/medias"
 MEDIA_SAVE_FILE_NAME = "saved_medias"
 
-show_chats = False
-clean_channel = False
-source_chat = None
 
 loop = asyncio.get_event_loop()
 client = TelegramClient("tcmc_session", API_ID, API_HASH)
+source_chat = None
+
+
+show_chats = False
+clean_channel = False
+start_id = None
+ignore_database = False
 
 Path(MEDIA_PATH).mkdir(parents=True, exist_ok=True)
 
@@ -130,6 +134,13 @@ def get_message_link(message):
     return f"https://t.me/c/{source_chat.id}/{message.id}"
 
 
+def check_positive(value):
+    ivalue = int(value)
+    if ivalue <= 0:
+        raise argparse.ArgumentTypeError("%s is an invalid positive int value" % value)
+    return ivalue
+
+
 async def main():
     global source_chat
     media_db = MediaDB(MEDIA_SAVE_FILE_NAME)
@@ -152,9 +163,11 @@ async def main():
     destination_channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
     async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
+        if start_id and message.id < start_id:
+            continue
         file = message.document or message.photo
         if file:
-            if not file.id in media_db.saved_medias:
+            if not file.id in media_db.saved_medias and not ignore_database:
                 messages.append(message)
 
     for key, group in groupby(messages, lambda x: x.grouped_id or x.id):
@@ -223,8 +236,10 @@ async def main():
 
 def init_argparse() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("-s", action="store_true")
-    parser.add_argument("-c", action="store_true")
+    parser.add_argument("-s", "--show-chats", action="store_true", help="Show all chats")
+    parser.add_argument("-c", "--clean-channel", action="store_true", help="Clean channel all messages")
+    parser.add_argument("-i", "--start-id", type=check_positive, help="Start from message id")
+    parser.add_argument("-d", "--ignore-database", action="store_true", help="Ignore media database")
     return parser
 
 
@@ -232,9 +247,13 @@ if __name__ == "__main__":
     parser = init_argparse()
     args = parser.parse_args()
 
-    if args.s:
+    if args.show_chats:
         show_chats = True
-    if args.c:
+    if args.clean_channel:
         clean_channel = True
+    if args.start_id:
+        start_id = args.start_id
+    if args.ignore_database:
+        ignore_database = True
 
     loop.run_until_complete(main())
