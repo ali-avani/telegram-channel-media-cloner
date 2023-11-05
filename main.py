@@ -32,6 +32,7 @@ source_chat = None
 show_chats = False
 clean_channel = False
 start_id = None
+end_id = None
 ignore_database = False
 
 Path(MEDIA_PATH).mkdir(parents=True, exist_ok=True)
@@ -166,6 +167,7 @@ async def main():
         file = message.document or message.photo
         if (
             (start_id and message.id < start_id)
+            or (end_id and message.id > end_id)
             or not file
             or (not ignore_database and file.id in media_db.saved_medias)
         ):
@@ -240,6 +242,7 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("-s", "--show-chats", action="store_true", help="Show all chats")
     parser.add_argument("-c", "--clean-channel", action="store_true", help="Clean channel all messages")
     parser.add_argument("-i", "--start-id", type=check_positive, help="Start from message id")
+    parser.add_argument("-e", "--end-id", type=check_positive, help="End at message id")
     parser.add_argument("-d", "--ignore-database", action="store_true", help="Ignore media database")
     return parser
 
@@ -254,6 +257,8 @@ if __name__ == "__main__":
         clean_channel = True
     if args.start_id:
         start_id = args.start_id
+    if args.end_id:
+        end_id = args.end_id
     if args.ignore_database:
         ignore_database = True
 
