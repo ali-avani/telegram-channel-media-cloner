@@ -245,9 +245,9 @@ async def main():
 
 def init_argparse() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument("-s", "--show-chats", action="store_true", help="Show all chats")
+    parser.add_argument("-p", "--show-chats", action="store_true", help="Show all chats")
     parser.add_argument("-c", "--clean-channel", action="store_true", help="Clean channel all messages")
-    parser.add_argument("-i", "--start-id", type=check_positive, help="Start from message id")
+    parser.add_argument("-s", "--start-id", type=check_positive, help="Start from message id")
     parser.add_argument("-e", "--end-id", type=check_positive, help="End at message id")
     parser.add_argument("-d", "--ignore-database", action="store_true", help="Ignore media database")
     parser.add_argument("--dry-run", action="store_true", help="Dry run and only show messages")
