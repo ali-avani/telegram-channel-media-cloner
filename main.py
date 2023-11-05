@@ -163,10 +163,12 @@ async def main():
     destination_channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
     async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
-        if start_id and message.id < start_id:
-            continue
         file = message.document or message.photo
-        if not file or file.id in media_db.saved_medias or ignore_database:
+        if (
+            (start_id and message.id < start_id)
+            or not file
+            or (not ignore_database and file.id in media_db.saved_medias)
+        ):
             continue
         messages.append(message)
 
