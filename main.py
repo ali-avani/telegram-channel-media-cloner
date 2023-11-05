@@ -268,5 +268,7 @@ if __name__ == "__main__":
         end_id = args.end_id
     if args.ignore_database:
         ignore_database = True
+    if args.dry_run:
+        dry_run = True
 
     loop.run_until_complete(main())
