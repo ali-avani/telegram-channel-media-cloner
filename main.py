@@ -118,14 +118,23 @@ class FileProgressBar:
     def get_message(self):
         return f"Message: {get_message_link(self.message)}"
 
-    def progress(self, progress_bar):
-        return f"{self.title.capitalize()}ing: {tqdm.format_sizeof(progress_bar.n)}/{tqdm.format_sizeof(progress_bar.total)} "
+    def progress(self, pbar):
+        title = f"{self.title.capitalize()}ing"
+        return pbar.format_meter(
+            pbar.n,
+            pbar.total,
+            pbar.format_dict["elapsed"],
+            prefix=title,
+            ncols=0,
+            unit="B",
+            unit_scale=True,
+        )
 
     def start_fn(self, _):
         return f"Starting {self.title}:\n{self.get_message()}"
 
-    def progress_fn(self, progress_bar):
-        return f"{self.get_message()}\n{self.progress(progress_bar)}"
+    def progress_fn(self, pbar):
+        return f"{self.get_message()}\n{self.progress(pbar)}"
 
 
 def display_upload_info(files):
