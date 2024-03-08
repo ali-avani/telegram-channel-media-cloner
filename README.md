@@ -1,4 +1,4 @@
-# Shekan Installer
+# Installer
 
 Python script to download all of media from private Telegram channel and upload them to custom channel.
 
