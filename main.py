@@ -330,7 +330,16 @@ class TelegramChannelMediaCloner:
         for i, message in enumerate(messages, 1):
             message_link = f"https://t.me/c/{self.source_chat.id}/{message.id}"
             file_type = "Video" if message.document else "Photo"
-            logger.info(f"  {i:3d}. {file_type} - ID: {message.id} - Link: {message_link}")
+            caption_preview = ""
+            if message.message:
+                # Show first 50 characters of caption
+                caption_text = message.message.replace("\n", " ")
+                if len(caption_text) > 50:
+                    caption_preview = f" - Caption: {caption_text[:50]}..."
+                else:
+                    caption_preview = f" - Caption: {caption_text}"
+
+            logger.info(f"  {i:3d}. {file_type} - ID: {message.id}{caption_preview} - Link: {message_link}")
 
         logger.info(f"Dry run complete - {len(messages):,} media files would be processed")
 
@@ -343,8 +352,8 @@ class TelegramChannelMediaCloner:
         else:
             logger.info(f"Uploading {len(filenames)} files: {', '.join(filenames)}")
 
-    async def _download_message_media(self, message: Message) -> Tuple[str, Optional[str], Optional[list]]:
-        """Download media from a single message."""
+    async def _download_message_media(self, message: Message) -> Tuple[str, Optional[str], Optional[list], Message]:
+        """Download media from a single message and return the complete message object."""
         message = await self.client.get_messages(self.config.source_chat_id, ids=message.id)
         file = message.document or message.photo
         filename = file.id
@@ -370,44 +379,81 @@ class TelegramChannelMediaCloner:
             thumb_path = await self.client.download_media(message, filepath_prefix, thumb=-1)
             attributes = file.attributes
 
-        return file_path, thumb_path, attributes
+        return file_path, thumb_path, attributes, message
 
-    async def _upload_files(self, files: List[Tuple], message: Message) -> None:
-        """Upload files to the destination channel."""
+    async def _upload_files(self, files: List[Tuple], original_message: Message) -> None:
+        """Upload files to the destination channel with original captions and metadata."""
         if len(files) == 1:
-            file_path, thumb_path, attributes = files[0]
+            file_path, thumb_path, attributes, message = files[0]
             self.display_upload_info([file_path])
-            files_to_send = file_path
-            thumbs_to_send = thumb_path
-            attributes_to_send = attributes
+
+            # Preserve original message caption and formatting
+            caption = message.message if message.message else None
+            if caption:
+                logger.info(f"Preserving caption: {caption[:100]}{'...' if len(caption) > 100 else ''}")
+
+            send_file_args = {
+                "entity": self.destination_channel,
+                "file": file_path,
+                "thumb": thumb_path,
+                "supports_streaming": True,
+                "attributes": attributes,
+                "caption": caption,
+                "parse_mode": None,  # Preserve original formatting
+                "formatting_entities": message.entities if hasattr(message, "entities") else None,
+            }
+
+            upbr = FileProgressBar(message, "upload", self.source_chat)
+            with ProgressBar(
+                self.client,
+                self.config.destination_channel_id,
+                unit="B",
+                unit_scale=True,
+                start_fn=upbr.start_fn,
+                progress_fn=upbr.progress_fn,
+            ) as progress_bar:
+                send_file_args["progress_callback"] = progress_bar.update_to
+                await self.client.send_file(**send_file_args)
+
         elif len(files) > 1:
-            file_paths, thumb_paths, attributes_list = zip(*files)
+            # Handle media groups (albums)
+            file_paths, thumb_paths, attributes_list, messages = zip(*files)
             self.display_upload_info(file_paths)
-            files_to_send = file_paths
-            thumbs_to_send = thumb_paths
-            attributes_to_send = attributes_list
-        else:
-            return
 
-        send_file_args = {
-            "entity": self.destination_channel,
-            "file": files_to_send,
-            "thumb": thumbs_to_send,
-            "supports_streaming": True,
-            "attributes": attributes_to_send,
-        }
+            # For media groups, use the caption from the first message that has one
+            caption = None
+            formatting_entities = None
+            for msg in messages:
+                if msg.message:
+                    caption = msg.message
+                    formatting_entities = msg.entities if hasattr(msg, "entities") else None
+                    break
 
-        upbr = FileProgressBar(message, "upload", self.source_chat)
-        with ProgressBar(
-            self.client,
-            self.config.destination_channel_id,
-            unit="B",
-            unit_scale=True,
-            start_fn=upbr.start_fn,
-            progress_fn=upbr.progress_fn,
-        ) as progress_bar:
-            send_file_args["progress_callback"] = progress_bar.update_to
-            await self.client.send_file(**send_file_args)
+            if caption:
+                logger.info(f"Preserving album caption: {caption[:100]}{'...' if len(caption) > 100 else ''}")
+
+            send_file_args = {
+                "entity": self.destination_channel,
+                "file": file_paths,
+                "thumb": thumb_paths,
+                "supports_streaming": True,
+                "attributes": attributes_list,
+                "caption": caption,
+                "parse_mode": None,  # Preserve original formatting
+                "formatting_entities": formatting_entities,
+            }
+
+            upbr = FileProgressBar(original_message, "upload", self.source_chat)
+            with ProgressBar(
+                self.client,
+                self.config.destination_channel_id,
+                unit="B",
+                unit_scale=True,
+                start_fn=upbr.start_fn,
+                progress_fn=upbr.progress_fn,
+            ) as progress_bar:
+                send_file_args["progress_callback"] = progress_bar.update_to
+                await self.client.send_file(**send_file_args)
 
     def _cleanup_files(self, filenames: List[Union[str, int]]) -> None:
         """Clean up downloaded files."""
@@ -432,6 +478,7 @@ class TelegramChannelMediaCloner:
             files = []
             filenames = []
             processed_groups += 1
+            group_messages = []
 
             try:
                 group_list = list(group)
@@ -439,13 +486,16 @@ class TelegramChannelMediaCloner:
 
                 for i, message in enumerate(group_list, 1):
                     logger.info(f"  Downloading file {i}/{len(group_list)}...")
-                    file_path, thumb_path, attributes = await self._download_message_media(message)
-                    files.append((file_path, thumb_path, attributes))
+                    file_path, thumb_path, attributes, downloaded_message = await self._download_message_media(message)
+                    files.append((file_path, thumb_path, attributes, downloaded_message))
+                    group_messages.append(downloaded_message)
 
                     file = message.document or message.photo
                     filenames.append(file.id)
 
-                await self._upload_files(files, message)
+                # Use the first message of the group as the representative message
+                representative_message = group_messages[0] if group_messages else group_list[0]
+                await self._upload_files(files, representative_message)
 
                 logger.info("Updating media database...")
                 for filename in filenames:
