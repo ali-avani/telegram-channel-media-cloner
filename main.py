@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import glob
+import logging
 import os
 import pickle
 import time
@@ -17,6 +18,10 @@ from telethon.tl.types import Message
 from tqdm import tqdm
 
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -185,19 +190,35 @@ class TelegramChannelMediaCloner:
 
     async def show_chats(self) -> None:
         """Display all available chats."""
+        logger.info("📋 Retrieving available chats...")
+        chat_count = 0
         async for dialog in self.client.iter_dialogs():
-            print(f"{dialog.name}: {dialog.id}")
+            chat_count += 1
+            logger.info(f"  {dialog.name}: {dialog.id}")
+        logger.info(f"✅ Found {chat_count} chats total")
 
     async def clean_channel(self) -> None:
         """Clean all messages from the destination channel."""
+        logger.info("🧹 Starting channel cleanup...")
+        logger.info("📥 Retrieving messages to delete...")
+
         message_ids = [
             message.id async for message in self.client.iter_messages(self.config.destination_channel_id, reverse=True)
         ]
+
+        if not message_ids:
+            logger.info("✅ Channel is already empty")
+            return
+
+        logger.info(f"🗑️  Deleting {len(message_ids)} messages from destination channel...")
         await self.client.delete_messages(
             entity=self.config.destination_channel_id,
             message_ids=message_ids,
         )
+
+        logger.info("🗄️  Clearing media database...")
         self.media_db.clean_media()
+        logger.info("✅ Channel cleanup completed successfully")
 
     def _should_skip_message(self, message: Message) -> bool:
         """Check if a message should be skipped based on filters."""
@@ -212,11 +233,12 @@ class TelegramChannelMediaCloner:
 
     async def _fetch_all_messages(self) -> Tuple[List[Message], int]:
         """Fetch all messages from the source chat using pagination."""
-        print("Fetching all messages using pagination to ensure complete retrieval...")
+        logger.info("📥 Fetching messages using pagination for complete retrieval...")
         messages = []
         message_count = 0
         offset_id = 0
         batch_size = 100
+        batches_processed = 0
 
         while True:
             batch_messages = await self.client.get_messages(
@@ -226,10 +248,11 @@ class TelegramChannelMediaCloner:
             if not batch_messages:
                 break
 
+            batches_processed += 1
             for message in batch_messages:
                 message_count += 1
                 if message_count % 1000 == 0:
-                    print(f"Processed {message_count} messages...")
+                    logger.info(f"📊 Processed {message_count:,} messages so far...")
 
                 if not self._should_skip_message(message):
                     messages.append(message)
@@ -237,32 +260,47 @@ class TelegramChannelMediaCloner:
             offset_id = batch_messages[-1].id
             await asyncio.sleep(0.1)
 
+        logger.info(f"📈 Processed {batches_processed} batches with {batch_size} messages each")
         return messages, message_count
 
     async def fetch_messages(self) -> List[Message]:
         """Fetch messages from the source chat."""
         source_name = self.source_chat.title if hasattr(self.source_chat, "title") else str(self.source_chat.id)
-        print(f"Fetching messages from {source_name}...")
+        logger.info(f"🎯 Starting message fetch from: {source_name}")
 
         messages, message_count = await self._fetch_all_messages()
 
-        print(f"Total messages processed: {message_count}")
-        print(f"Messages with media found: {len(messages)}")
+        logger.info(f"📊 Total messages processed: {message_count:,}")
+        logger.info(f"🎬 Messages with media found: {len(messages):,}")
+
+        if len(messages) == 0:
+            logger.warning("⚠️  No media messages found to process")
+        else:
+            logger.info(f"✅ Ready to process {len(messages):,} media messages")
 
         return messages
 
     def display_dry_run_results(self, messages: List[Message]) -> None:
         """Display results for dry run mode."""
-        print(f"Dry run - showing {len(messages)} messages with media:")
-        for message in messages:
+        logger.info(f"🧪 DRY RUN MODE - Found {len(messages):,} messages with media:")
+        logger.info("📋 Message list:")
+
+        for i, message in enumerate(messages, 1):
             message_link = f"https://t.me/c/{self.source_chat.id}/{message.id}"
-            print(f"{message.id}: {message_link}")
+            file = message.document or message.photo
+            file_type = "📹 Video" if message.document else "🖼️  Photo"
+            logger.info(f"  {i:3d}. {file_type} - ID: {message.id} - Link: {message_link}")
+
+        logger.info(f"✅ Dry run complete - {len(messages):,} media files would be processed")
 
     @staticmethod
     def display_upload_info(files: List[str]) -> None:
         """Display information about files being uploaded."""
         filenames = [file.split("/")[-1] for file in files]
-        print(", ".join(filenames))
+        if len(filenames) == 1:
+            logger.info(f"📤 Uploading file: {filenames[0]}")
+        else:
+            logger.info(f"📤 Uploading {len(filenames)} files: {', '.join(filenames)}")
 
     async def _download_message_media(self, message: Message) -> Tuple[str, Optional[str], Optional[list]]:
         """Download media from a single message."""
@@ -295,8 +333,6 @@ class TelegramChannelMediaCloner:
 
     async def _upload_files(self, files: List[Tuple], message: Message) -> None:
         """Upload files to the destination channel."""
-        print("Uploading:")
-
         if len(files) == 1:
             file_path, thumb_path, attributes = files[0]
             self.display_upload_info([file_path])
@@ -334,22 +370,34 @@ class TelegramChannelMediaCloner:
 
     def _cleanup_files(self, filenames: List[Union[str, int]]) -> None:
         """Clean up downloaded files."""
-        print("Cleaning up")
+        logger.debug("🧹 Cleaning up temporary files...")
+        files_removed = 0
         for filename in filenames:
             for file_path in glob.glob(f"{self.config.media_path}/{filename}*"):
                 with suppress(OSError):
                     os.remove(file_path)
+                    files_removed += 1
+        if files_removed > 0:
+            logger.debug(f"🗑️  Removed {files_removed} temporary files")
 
     async def process_messages(self, messages: List[Message]) -> None:
         """Process and clone messages with media."""
+        total_groups = len(list(groupby(messages, lambda x: x.grouped_id or x.id)))
+        processed_groups = 0
+
+        logger.info(f"🚀 Starting media processing for {total_groups} message groups...")
+
         for key, group in groupby(messages, lambda x: x.grouped_id or x.id):
             files = []
             filenames = []
+            processed_groups += 1
 
             try:
-                print("Downloading:", key)
+                group_list = list(group)
+                logger.info(f"📥 [{processed_groups}/{total_groups}] Processing group {key} ({len(group_list)} files)")
 
-                for message in group:
+                for i, message in enumerate(group_list, 1):
+                    logger.info(f"  📁 Downloading file {i}/{len(group_list)}...")
                     file_path, thumb_path, attributes = await self._download_message_media(message)
                     files.append((file_path, thumb_path, attributes))
 
@@ -358,36 +406,67 @@ class TelegramChannelMediaCloner:
 
                 await self._upload_files(files, message)
 
+                logger.info("💾 Updating media database...")
                 for filename in filenames:
                     self.media_db.add_media(filename)
 
+                logger.info(f"✅ Group {key} completed successfully")
+
+            except Exception as e:
+                logger.error(f"❌ Error processing group {key}: {str(e)}")
+                raise
             finally:
                 self._cleanup_files(filenames)
-                print("Done")
-                print()
+
+        logger.info(f"🎉 All done! Successfully processed {processed_groups} message groups")
 
     async def run(self) -> None:
         """Main execution method."""
-        await self.start()
+        logger.info("🚀 Starting Telegram Channel Media Cloner...")
 
-        if self.config.show_chats:
-            await self.show_chats()
-            return
+        try:
+            logger.info("🔐 Connecting to Telegram...")
+            await self.start()
+            logger.info("✅ Successfully connected to Telegram")
 
-        if self.config.clean_channel:
-            await self.clean_channel()
-            return
+            if self.config.show_chats:
+                await self.show_chats()
+                return
 
-        self.source_chat = await self.client.get_entity(self.config.source_chat_id)
-        self.destination_channel = await self.client.get_entity(self.config.destination_channel_id)
+            if self.config.clean_channel:
+                await self.clean_channel()
+                return
 
-        messages = await self.fetch_messages()
+            logger.info("🔍 Retrieving chat entities...")
+            self.source_chat = await self.client.get_entity(self.config.source_chat_id)
+            self.destination_channel = await self.client.get_entity(self.config.destination_channel_id)
 
-        if self.config.dry_run:
-            self.display_dry_run_results(messages)
-            return
+            source_name = self.source_chat.title if hasattr(self.source_chat, "title") else str(self.source_chat.id)
+            dest_name = (
+                self.destination_channel.title
+                if hasattr(self.destination_channel, "title")
+                else str(self.destination_channel.id)
+            )
 
-        await self.process_messages(messages)
+            logger.info(f"📡 Source: {source_name}")
+            logger.info(f"📺 Destination: {dest_name}")
+
+            messages = await self.fetch_messages()
+
+            if self.config.dry_run:
+                self.display_dry_run_results(messages)
+                return
+
+            if len(messages) == 0:
+                logger.info("🏁 No media messages to process. Exiting.")
+                return
+
+            await self.process_messages(messages)
+            logger.info("🎊 Media cloning completed successfully!")
+
+        except Exception as e:
+            logger.error(f"💥 Fatal error: {str(e)}")
+            raise
 
 
 def check_positive(value: str) -> int:
@@ -407,6 +486,7 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("-e", "--end-id", type=check_positive, help="End at message id")
     parser.add_argument("-d", "--ignore-database", action="store_true", help="Ignore media database")
     parser.add_argument("--dry-run", action="store_true", help="Dry run and only show messages")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging (debug level)")
     return parser
 
 
@@ -414,6 +494,11 @@ async def main() -> None:
     """Main entry point."""
     parser = init_argparse()
     args = parser.parse_args()
+
+    # Set logging level based on verbose flag
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.info("🔧 Debug logging enabled")
 
     config = Config.from_env_and_args(args)
     cloner = TelegramChannelMediaCloner(config)
