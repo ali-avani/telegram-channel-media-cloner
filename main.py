@@ -35,7 +35,6 @@ start_id = None
 end_id = None
 ignore_database = False
 dry_run = False
-use_takeout = False
 manual_pagination = False
 
 Path(MEDIA_PATH).mkdir(parents=True, exist_ok=True)
@@ -179,74 +178,20 @@ async def main():
     print(f"Fetching messages from {source_chat.title if hasattr(source_chat, 'title') else source_chat.id}...")
     message_count = 0
 
-    takeout_success = False
-    if use_takeout:
-        print("Using takeout session for bulk export...")
-        try:
-            async with client.takeout(megagroups=True, channels=True) as takeout:
-                async for message in takeout.iter_messages(
-                    SOURCE_CHAT_ID,
-                    reverse=True,
-                    limit=None,
-                    wait_time=0,
-                ):
-                    message_count += 1
-                    if message_count % 1000 == 0:
-                        print(f"Processed {message_count} messages...")
+    if manual_pagination:
+        print("Using manual pagination to ensure all messages are retrieved...")
+        offset_id = 0
+        batch_size = 100
 
-                    file = message.document or message.photo
-                    if (
-                        (start_id and message.id < start_id)
-                        or (end_id and message.id > end_id)
-                        or not file
-                        or (not ignore_database and file.id in media_db.saved_medias)
-                    ):
-                        continue
-                    messages.append(message)
-                takeout_success = True
-        except Exception as e:
-            print(f"Takeout failed: {e}")
-            print("Falling back to regular method...")
+        while True:
+            batch_messages = await client.get_messages(
+                SOURCE_CHAT_ID, limit=batch_size, offset_id=offset_id, reverse=True
+            )
 
-    if not takeout_success:
-        if manual_pagination:
-            print("Using manual pagination to ensure all messages are retrieved...")
-            offset_id = 0
-            batch_size = 100
+            if not batch_messages:
+                break
 
-            while True:
-                batch_messages = await client.get_messages(
-                    SOURCE_CHAT_ID, limit=batch_size, offset_id=offset_id, reverse=True
-                )
-
-                if not batch_messages:
-                    break
-
-                for message in batch_messages:
-                    message_count += 1
-                    if message_count % 1000 == 0:
-                        print(f"Processed {message_count} messages...")
-
-                    file = message.document or message.photo
-                    if (
-                        (start_id and message.id < start_id)
-                        or (end_id and message.id > end_id)
-                        or not file
-                        or (not ignore_database and file.id in media_db.saved_medias)
-                    ):
-                        continue
-                    messages.append(message)
-
-                offset_id = batch_messages[-1].id
-
-                await asyncio.sleep(0.1)
-        else:
-            async for message in client.iter_messages(
-                SOURCE_CHAT_ID,
-                reverse=True,
-                limit=None,
-                wait_time=1,
-            ):
+            for message in batch_messages:
                 message_count += 1
                 if message_count % 1000 == 0:
                     print(f"Processed {message_count} messages...")
@@ -260,6 +205,30 @@ async def main():
                 ):
                     continue
                 messages.append(message)
+
+            offset_id = batch_messages[-1].id
+
+            await asyncio.sleep(0.1)
+    else:
+        async for message in client.iter_messages(
+            SOURCE_CHAT_ID,
+            reverse=True,
+            limit=None,
+            wait_time=1,
+        ):
+            message_count += 1
+            if message_count % 1000 == 0:
+                print(f"Processed {message_count} messages...")
+
+            file = message.document or message.photo
+            if (
+                (start_id and message.id < start_id)
+                or (end_id and message.id > end_id)
+                or not file
+                or (not ignore_database and file.id in media_db.saved_medias)
+            ):
+                continue
+            messages.append(message)
 
     print(f"Total messages processed: {message_count}")
     print(f"Messages with media found: {len(messages)}")
@@ -342,9 +311,6 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("-d", "--ignore-database", action="store_true", help="Ignore media database")
     parser.add_argument("--dry-run", action="store_true", help="Dry run and only show messages")
     parser.add_argument(
-        "--use-takeout", action="store_true", help="Use takeout session for bulk export (lower rate limits)"
-    )
-    parser.add_argument(
         "--manual-pagination", action="store_true", help="Use manual pagination to ensure all messages are retrieved"
     )
     return parser
@@ -366,8 +332,6 @@ if __name__ == "__main__":
         ignore_database = True
     if args.dry_run:
         dry_run = True
-    if args.use_takeout:
-        use_takeout = True
     if args.manual_pagination:
         manual_pagination = True
 
