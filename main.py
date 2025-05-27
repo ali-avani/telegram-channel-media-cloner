@@ -176,11 +176,10 @@ async def main():
     destination_channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
 
-    # Add debugging and additional parameters to ensure we get all messages
     print(f"Fetching messages from {source_chat.title if hasattr(source_chat, 'title') else source_chat.id}...")
     message_count = 0
 
-    # Use takeout session for bulk export if requested
+    takeout_success = False
     if use_takeout:
         print("Using takeout session for bulk export...")
         try:
@@ -189,10 +188,10 @@ async def main():
                     SOURCE_CHAT_ID,
                     reverse=True,
                     limit=None,
-                    wait_time=0,  # Takeout has lower rate limits
+                    wait_time=0,
                 ):
                     message_count += 1
-                    if message_count % 1000 == 0:  # Progress indicator
+                    if message_count % 1000 == 0:
                         print(f"Processed {message_count} messages...")
 
                     file = message.document or message.photo
@@ -204,12 +203,12 @@ async def main():
                     ):
                         continue
                     messages.append(message)
+                takeout_success = True
         except Exception as e:
             print(f"Takeout failed: {e}")
             print("Falling back to regular method...")
-            use_takeout = False
 
-    if not use_takeout:
+    if not takeout_success:
         if manual_pagination:
             print("Using manual pagination to ensure all messages are retrieved...")
             offset_id = 0
@@ -225,7 +224,7 @@ async def main():
 
                 for message in batch_messages:
                     message_count += 1
-                    if message_count % 1000 == 0:  # Progress indicator
+                    if message_count % 1000 == 0:
                         print(f"Processed {message_count} messages...")
 
                     file = message.document or message.photo
@@ -238,20 +237,18 @@ async def main():
                         continue
                     messages.append(message)
 
-                # Update offset_id for next batch
                 offset_id = batch_messages[-1].id
 
-                # Small delay to avoid hitting rate limits
                 await asyncio.sleep(0.1)
         else:
             async for message in client.iter_messages(
                 SOURCE_CHAT_ID,
                 reverse=True,
                 limit=None,
-                wait_time=1,  # Add wait time to handle potential flood limits
+                wait_time=1,
             ):
                 message_count += 1
-                if message_count % 1000 == 0:  # Progress indicator
+                if message_count % 1000 == 0:
                     print(f"Processed {message_count} messages...")
 
                 file = message.document or message.photo
