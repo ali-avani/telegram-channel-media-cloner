@@ -36,7 +36,6 @@ class Config:
     end_id: Optional[int] = None
     ignore_database: bool = False
     dry_run: bool = False
-    manual_pagination: bool = False
 
     @classmethod
     def from_env_and_args(cls, args: argparse.Namespace) -> "Config":
@@ -56,7 +55,6 @@ class Config:
             end_id=args.end_id,
             ignore_database=args.ignore_database,
             dry_run=args.dry_run,
-            manual_pagination=args.manual_pagination,
         )
 
 
@@ -212,9 +210,9 @@ class TelegramChannelMediaCloner:
             or (not self.config.ignore_database and file.id in self.media_db.saved_medias)
         )
 
-    async def _fetch_messages_manual_pagination(self) -> List[Message]:
-        """Fetch messages using manual pagination."""
-        print("Using manual pagination to ensure all messages are retrieved...")
+    async def _fetch_all_messages(self) -> Tuple[List[Message], int]:
+        """Fetch all messages from the source chat using pagination."""
+        print("Fetching all messages using pagination to ensure complete retrieval...")
         messages = []
         message_count = 0
         offset_id = 0
@@ -241,35 +239,12 @@ class TelegramChannelMediaCloner:
 
         return messages, message_count
 
-    async def _fetch_messages_standard(self) -> Tuple[List[Message], int]:
-        """Fetch messages using standard iteration."""
-        messages = []
-        message_count = 0
-
-        async for message in self.client.iter_messages(
-            self.config.source_chat_id,
-            reverse=True,
-            limit=None,
-            wait_time=1,
-        ):
-            message_count += 1
-            if message_count % 1000 == 0:
-                print(f"Processed {message_count} messages...")
-
-            if not self._should_skip_message(message):
-                messages.append(message)
-
-        return messages, message_count
-
     async def fetch_messages(self) -> List[Message]:
         """Fetch messages from the source chat."""
         source_name = self.source_chat.title if hasattr(self.source_chat, "title") else str(self.source_chat.id)
         print(f"Fetching messages from {source_name}...")
 
-        if self.config.manual_pagination:
-            messages, message_count = await self._fetch_messages_manual_pagination()
-        else:
-            messages, message_count = await self._fetch_messages_standard()
+        messages, message_count = await self._fetch_all_messages()
 
         print(f"Total messages processed: {message_count}")
         print(f"Messages with media found: {len(messages)}")
@@ -432,9 +407,6 @@ def init_argparse() -> argparse.ArgumentParser:
     parser.add_argument("-e", "--end-id", type=check_positive, help="End at message id")
     parser.add_argument("-d", "--ignore-database", action="store_true", help="Ignore media database")
     parser.add_argument("--dry-run", action="store_true", help="Dry run and only show messages")
-    parser.add_argument(
-        "--manual-pagination", action="store_true", help="Use manual pagination to ensure all messages are retrieved"
-    )
     return parser
 
 
