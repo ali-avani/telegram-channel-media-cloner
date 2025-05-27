@@ -173,7 +173,7 @@ async def main():
     source_chat = await client.get_entity(SOURCE_CHAT_ID)
     destination_channel = await client.get_entity(DESTINATION_CHANNEL_ID)
     messages = []
-    async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True):
+    async for message in client.iter_messages(SOURCE_CHAT_ID, reverse=True, limit=None):
         file = message.document or message.photo
         if (
             (start_id and message.id < start_id)
